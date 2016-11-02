@@ -23,6 +23,7 @@ dictionaries (each one represents an individual play in the game). You can
 always read the source code to find out more.
 
 Also, the library does have numerous unit tests that you can check out.
+**Warning**: Tests are outdated.
 
 
 Usage
@@ -65,3 +66,20 @@ specific dates.
     >>> for day in daterange(week_ago, yesterday):
     ...     for game in get_games(day):
     ...         print game
+
+Converting dictionary to DataFrame (use Jupyter Notebook):
+
+    import pandas as pd
+    import espn
+    import datetime
+    games = []
+    yesterday = datetime.date.today() - datetime.timedelta(1)
+    for game in espn.get_games(yesterday, iterable=True):
+        games.append(game)
+    
+    # game[0] is the first game from the list
+    # game[0][0] is away team
+    # game[0][1] is home team
+    # game[0][2] is play-by-play data
+    
+    pd.DataFrame.from_dict(games[0][2])
