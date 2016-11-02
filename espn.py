@@ -15,13 +15,12 @@ quarters, etc). I've found the majority of games normally have around 400 to
 460 plays.
 
 """
-
-import urllib2
+from urllib.request import urlopen
 import re
 import datetime
-from urlparse import urlparse
+from urllib.parse import urlparse
 from bs4 import BeautifulSoup as bs
-
+import string
 
 def daterange(start, end):
     """Generator for days between two specific days."""
@@ -32,27 +31,27 @@ def daterange(start, end):
 def _format_scoreboard_url(day, league='nba'):
     """Format ESPN scoreboard link to scrape individual box scores from."""
     league = league.lower()
-    link = [league + '/scoreboard?date=']
+    link = [league + '/scoreboard/_/date/']
     if isinstance(day, datetime.date):
         link.append(day.strftime('%Y%m%d'))
     else:
         link.append(day)
     if league == 'ncb':
         link.append('&confId=50')
-    scoreboard_link = ''.join(['http://scores.espn.go.com/', ''.join(link)])
+    scoreboard_link = ''.join(['http://www.espn.com/', ''.join(link)])
     return scoreboard_link
 
 
 def scrape_links(espn_scoreboard):
     """Scrape ESPN's scoreboard for Play-By-Play links."""
-    url = urllib2.urlopen(espn_scoreboard)
-    print url.geturl()
-    soup = bs(url.read(), ['fast', 'lxml'])
-    div = soup.find('div', {'class': 'span-4'})
-    links = (a['href'] for a in div.findAll('a') if re.match('Play.*',
-        a.contents[0]))
-    queries = [urlparse(link).query for link in links]
-    return queries
+    url = urlopen(espn_scoreboard).read().decode('utf-8')
+    f2 = url.split(',')
+    url_list=[]
+    for i in range( len( f2 ) ):
+        if ("/nba/recap?gameId=" in f2[i]):
+            url_list += [f2[i][-10:-1]]
+    #1st 'playbyplay' but didn't catch all games so provided explicit link to recap
+    return url_list
 
 
 def adjust_game(plays, league='nba'):
@@ -67,17 +66,18 @@ def adjust_game(plays, league='nba'):
     """
     # TODO: Maybe 'period' instead of 'quarter'? NCB uses 'halves'.
     game = []
-    quarter = 1
+    quarter = 1#wtf
     end_of_quarter = False
     for play in plays:
+        try:
+            time = play.find('td', {'class': 'time-stamp'}).text
+        except:
+            continue
         new_play = _play_as_dict(play)
-        time = play[0]
         time_dict, quarter, end_of_quarter = _adjust_time(time,
                 quarter, end_of_quarter, league)
         new_play.update(time_dict)
-        try:
-            scores = play[2]
-        except IndexError:
+        if(play.find('td', {'class': 'combined-score no-change'})):
             if len(game) > 0:
                 # Official Play without score (new quarter, etc.)
                 last_play = game[-1]
@@ -88,6 +88,7 @@ def adjust_game(plays, league='nba'):
                 new_play['away_score'] = 0
                 new_play['home_score'] = 0
         else:
+            scores = play.find('td', {'class': 'combined-score '}).text
             away_score, home_score = scores.split('-')
             new_play['away_score'] = int(away_score)
             new_play['home_score'] = int(home_score)
@@ -103,7 +104,7 @@ def _adjust_time(time, quarter, end_of_quarter, league):
     new_time = re.split(':', time)
     minutes = int(new_time[0])
     seconds = int(new_time[1])
-    if minutes is 0 and not end_of_quarter:
+    if minutes == 0 and not end_of_quarter:
         end_of_quarter = True
     elif end_of_quarter and minutes > 1:
         quarter += 1
@@ -121,7 +122,7 @@ def _league_time(league):
     Return league specific game info -- number of quarters, regulation time
     limit, regular quarter length.
     """
-    if league is 'nba':
+    if(league == 'nba'):
         num_quarters = 4
         regulation_time = 48
         regular_quarter = 12
@@ -138,7 +139,7 @@ def _calc_overall_time(seconds, minutes, quarter, league):
     of four arguments, but it's necessary unfortunately.
     """
     num_quarters, regulation_time, regular_quarter = _league_time(league)
-    if quarter > num_quarters:
+    if quarter >= num_quarters:
         # We're in overtime.
         quarter_length = 5
         overtimes = quarter - num_quarters
@@ -164,39 +165,42 @@ def _play_as_dict(play):
     # TODO: Play can be '&nbsp;' or u'\xa0', so I put len < 10.
     # Should probably change to something more explicit in the future.
     new_play = {}
-    if len(play) is 2:
-        new_play['official_play'] = play[1]
-        new_play['home_play'] = None
-        new_play['away_play'] = None
+    logo = str(play.find('td', {'class': 'logo'}))
+    logo = (re.search('(?<=500/).+?(?=.png&amp;h=100&amp;w=100)', logo).group(0)).upper()
+    if(logo != away_team):
+        new_play['away_play'] = ""
+        new_play['home_play'] = play.find('td', {'class': 'game-details'}).text
     else:
-        new_play['official_play'] = None
-        away_play = play[1]
-        home_play = play[3]
-        if len(away_play) < 10:
-            new_play['away_play'] = None
-            new_play['home_play'] = home_play
-        elif len(home_play) < 10:
-            new_play['away_play'] = away_play
-            new_play['home_play'] = None
+        new_play['away_play'] = play.find('td', {'class': 'game-details'}).text
+        new_play['home_play'] = ""
     return new_play
 
 
 def parse_plays(game_id, league='nba'):
     """Parse a game's Play-By-Play page on ESPN."""
     league = league.lower()
-    espn = 'http://scores.espn.go.com/' + league + '/playbyplay?' +\
-            game_id + '&period=0'
-    url = urllib2.urlopen(espn)
-    print url.geturl()
-
-    soup = bs(url.read(), ['fast', 'lxml'])
-    table = soup.find('table', {'class': 'mod-data'})
-    thead = [thead.extract() for thead in table.findAll('thead')] 
-    rows = (list(tr(text=True)) for tr in table.findAll('tr'))
+    espn = 'http://espn.com/' + league + '/playbyplay?gameId=' +\
+            game_id
+    url = urlopen(espn)
+    soup = bs(url.read(), 'lxml')
+    table = soup.find('div', {'id': 'gamepackage-qtrs-wrap'})
+    #added exception in case playbyplay ain't available
+    '''try:
+        thead = [thead.extract() for thead in table.findAll('thead')]
+        print(thead)
+    except AttributeError:
+        print ('\nPlay-By-Play not available :(\n')'''
+    global title
+    title = [team.extract() for team in soup.findAll('td', {'class': 'team-name'})]
+    global away_team
+    away_team = title[0].text
+    global home_team
+    home_team =  title[1].text
+    rows = [tr.extract() for tr in table.findAll('tr')]
+    del rows[0]
     game = adjust_game(rows, league)
-    teams = thead[0].findChildren('th', {'width':'40%'})
-    away_team, home_team = [team.string.title() for team in teams]
-    print len(game), away_team, home_team
+    print('\n'+away_team+' @ '+home_team+', '+str(len(game))+' possessions')
+    print(url.geturl())
     return away_team, home_team, game
 
 
@@ -214,6 +218,7 @@ def get_games(day, league='nba', iterable=False):
     """
     espn_scoreboard = _format_scoreboard_url(day, league=league)
     all_games = scrape_links(espn_scoreboard)
+    print(all_games)
     if not iterable:
         games = [parse_plays(game, league=league) for game in all_games]
     else:
@@ -224,11 +229,10 @@ def get_games(day, league='nba', iterable=False):
 def main():
     yesterday = datetime.date.today() - datetime.timedelta(1)
     for game in get_games(yesterday, iterable=True):
-        print game
-
+        print(game)
 
 if __name__ == '__main__':
     import time
     start = time.time()
     main()
-    print time.time() - start, 'seconds'
+    print (time.time() - start, 'seconds')
