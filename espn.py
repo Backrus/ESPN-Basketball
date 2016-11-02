@@ -229,8 +229,9 @@ def main():
     for game in get_games(yesterday, iterable=True):
         print(game)
 
+        
 if __name__ == '__main__':
     import time
     start = time.time()
     main()
-    print (time.time() - start, 'seconds')
+    print(time.time() - start, 'seconds')
