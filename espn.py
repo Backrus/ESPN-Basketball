@@ -50,7 +50,6 @@ def scrape_links(espn_scoreboard):
     for i in range( len( f2 ) ):
         if ("/nba/recap?gameId=" in f2[i]):
             url_list += [f2[i][-10:-1]]
-    #1st 'playbyplay' but didn't catch all games so provided explicit link to recap
     return url_list
 
 
@@ -66,7 +65,7 @@ def adjust_game(plays, league='nba'):
     """
     # TODO: Maybe 'period' instead of 'quarter'? NCB uses 'halves'.
     game = []
-    quarter = 1#wtf
+    quarter = 1
     end_of_quarter = False
     for play in plays:
         try:
@@ -218,7 +217,6 @@ def get_games(day, league='nba', iterable=False):
     """
     espn_scoreboard = _format_scoreboard_url(day, league=league)
     all_games = scrape_links(espn_scoreboard)
-    print(all_games)
     if not iterable:
         games = [parse_plays(game, league=league) for game in all_games]
     else:
